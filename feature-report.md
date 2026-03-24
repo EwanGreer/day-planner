@@ -1,113 +1,108 @@
-# Feature Report: Local SQLite Data Store
+# Feature Report: Local Config File
 
 **Date**: 2026-03-24
 **Language/Framework**: Go
-**Issue**: #2
-**Branch**: `feature/issue-2-local-data-store`
+**Issue**: #3
+**Branch**: `feature/issue-3-config-file`
 **Status**: Complete
 
 ## Summary
 
-Implemented a SQLite-backed local data store using `modernc.org/sqlite`
-(pure Go, no CGO). The store satisfies the expanded `core.Store` interface
-covering five entity types: `DayPlan`, `CompletionRecord`, `Streak`,
-`Reflection`, and `NudgeWindow`. Schema migrations are versioned and tracked
-in a `schema_version` table. The store is wired into `main.go` and opens at
-`~/.day-planner/planner.db` by default.
+Implemented a TOML-based configuration system for the day planner. A new
+`core.Config` domain type carries all runtime configuration with no file-format
+dependency. A new `internal/config` package provides `Load`, `DefaultConfig`,
+and `ExpandDataDir`. The loader merges file values over defaults, applies the
+`JIRA_API_TOKEN` env-var override, and validates constraints before returning.
+Missing config files return defaults without error. `main.go` now loads config
+before opening the store and derives the data directory from `cfg.General.DataDir`.
 
 ## Changes Made
 
 ### internal/core
 
-- `internal/core/domain.go` — Added `CompletionRecord`, `CompletionStatus`,
-  `Streak`, `Reflection`, `NudgeWindow` domain types, and `CreatedAt` field
-  on `DayPlan`.
-- `internal/core/store.go` — Replaced the two-method stub with the full
-  `Store` interface covering all five entity types plus a `Close()` lifecycle
-  method.
+- `internal/core/config.go` — New file. Defines `Config`, `GeneralConfig`,
+  `NudgesConfig`, `FocusWindow`, `TaskwarriorConfig`, and `JiraConfig`. Zero
+  imports — no file-format or IO dependencies.
 
-### internal/store/sqlite (new package)
+### internal/config (new package)
 
-- `internal/store/sqlite/migrations.go` — Integer-versioned migration system.
-  Migrations are applied in ascending order; already-applied versions are
-  skipped. Schema version 1 creates six tables: `schema_version`,
-  `day_plans`, `completion_records`, `streaks`, `reflections`,
-  `nudge_windows`.
-- `internal/store/sqlite/store.go` — `SQLiteStore` struct with a `New(path)`
-  constructor and all `core.Store` methods. Dates stored as `YYYY-MM-DD`
-  text; timestamps as RFC3339. `DayPlan.Tasks` and `Goals` stored as JSON
-  blobs. Compile-time interface assertion at package level.
+- `internal/config/loader.go` — `Load(path string) (*core.Config, error)`,
+  `DefaultConfig() *core.Config`, `ExpandDataDir(path string) (string, error)`.
+  Uses `github.com/BurntSushi/toml` for parsing. Internal `rawConfig` mirrors
+  the TOML shape with pointer fields so absent keys fall back to defaults rather
+  than overwriting them with zero values. `mergeRaw` layers parsed values over
+  defaults; `applyEnvOverrides` applies `JIRA_API_TOKEN`; `validate` enforces
+  range and completeness constraints.
+- `internal/config/default.toml` — Commented TOML template documenting all
+  options with their defaults. Not loaded at runtime; serves as reference
+  documentation.
 
 ### cmd/day-planner
 
-- `cmd/day-planner/main.go` — Resolves `~/.day-planner/planner.db` via
-  `os.UserHomeDir()`, creates the directory with `os.MkdirAll`, opens the
-  store, defers `Close()`, and logs the store path through the presenter.
+- `cmd/day-planner/main.go` — Calls `config.Load("")` before opening the store,
+  expands `DataDir` with `config.ExpandDataDir`, uses the expanded path as the
+  base for `dbPath`, and prints `"Data dir: <path>"` via the presenter.
 
 ## Tests Written
 
-- `internal/store/sqlite/store_test.go` — 8 test cases, each using an
-  isolated `t.TempDir()` database:
+- `internal/config/loader_test.go` — 8 test cases, each using an isolated
+  `t.TempDir()`:
 
   | Test | What is verified |
   |------|-----------------|
-  | `TestSaveDayPlan_and_Load` | Round-trip: tasks, goals, score, created_at |
-  | `TestLoadDayPlan_NotFound` | Missing date returns `nil, nil` (not an error) |
-  | `TestSaveCompletion_and_Load` | Two records saved; count and fields correct |
-  | `TestSaveStreak_and_Load` | Current, Longest, LastActiveDate round-trip |
-  | `TestLoadStreak_Empty` | No data returns zero-value `&Streak{}`, not nil |
-  | `TestSaveReflection_and_Load` | Text, date, created_at round-trip |
-  | `TestSaveNudgeWindow_and_Load` | Two windows saved; count and labels correct |
-  | `TestMigrations_Idempotent` | Opening the same DB twice does not error |
+  | `TestDefaultConfig` | Load with non-existent path returns all defaults |
+  | `TestPartialConfig` | Only `[general]` present; other sections use defaults |
+  | `TestFullConfig` | All fields parsed correctly including focus windows and project keys |
+  | `TestEnvOverride` | `JIRA_API_TOKEN` env var overrides file value |
+  | `TestInvalidStreakThreshold` | `streak_threshold = 150` returns a validation error |
+  | `TestInvalidIntervalMinutes` | `interval_minutes = 0` returns a validation error |
+  | `TestJiraEnabledWithoutURL` | `enabled = true` without `base_url` returns a validation error |
+  | `TestMissingFile` | Non-existent path returns defaults, not an error |
 
 ## Commits
 
 | Hash | Message |
 |------|---------|
-| `dfed3e6` | expand domain types and Store interface in internal/core |
-| `5b0fd5f` | add SQLite store implementation with versioned migrations |
-| `08a3d76` | add unit tests for SQLiteStore (8 cases) |
-| `c70f3b9` | wire SQLite store into main startup |
+| `8cf1d86` | add Config domain types to internal/core |
+| `dff5d58` | implement config loader with defaults, TOML parsing, env override, validation |
+| `74113d1` | add unit tests for config loader |
+| `b30ddc4` | wire config into main: load config, use DataDir for db path, show data dir |
 
 ## Acceptance Criteria
 
 - [x] `go build ./...` passes
-- [x] `go test ./...` passes — all 8 store tests green
-- [x] `internal/core` has zero new imports from `internal/store` or any storage engine
-- [x] `SQLiteStore` has compile-time assertion it implements `core.Store`
-- [x] Schema migrations are versioned (version tracked in `schema_version` table)
-- [x] Store location defaults to `~/.day-planner/planner.db` but is injectable via `New(path)`
-- [x] `LoadDayPlan` returns `nil, nil` for missing dates (not an error)
-- [x] `LoadStreak` returns zero-value struct for missing data (not nil, not an error)
+- [x] `go test ./...` passes — all 8 config tests green
+- [x] `internal/core/config.go` has zero imports from `internal/config`
+- [x] `internal/config` imports `internal/core` but nothing from `internal/view` or `internal/store`
+- [x] `JIRA_API_TOKEN` env var overrides the file value
+- [x] Missing config file returns defaults without error
+- [x] Validation errors are clear and actionable
 
 ## Design Decisions
 
-- **`modernc.org/sqlite` over `mattn/go-sqlite3`**: Pure Go driver removes the
-  CGO requirement, keeping the binary portable across machines without a C
-  toolchain.
-- **`dateFmt = "2006-01-02"` for dates, RFC3339 for timestamps**: Dates that
-  represent calendar days (plan date, completion date, streak date) are stored
-  without a time component to avoid timezone ambiguity during day-boundary
-  comparisons. Full timestamps (created_at, completed_at, nudge windows)
-  use RFC3339.
-- **`INSERT OR REPLACE` for `SaveDayPlan`**: Natural upsert semantics — the
-  caller always provides a complete plan for a given day; there is no partial
-  update path at this layer.
-- **Singleton streak row (`id = 1`)**: There is only one streak per user.
-  Using a fixed primary key makes the upsert trivial and avoids an extra
-  `SELECT` before every save.
-- **`_ = store` in main**: The store variable is retained but not yet passed
-  anywhere. Subsequent issues (planning ritual, check-in commands, etc.) will
-  inject it into the service layer.
+- **Pointer fields in `rawConfig`**: Using `*string` and `*int` for all raw
+  fields lets `mergeRaw` distinguish "key absent from file" (nil) from "key
+  present with zero value" (non-nil). This keeps default logic in one place
+  (`DefaultConfig`) rather than scattering sentinel checks.
+- **`ExpandDataDir` exported separately**: `main.go` needs to expand the path
+  returned by `DefaultConfig`; keeping expansion as a standalone function avoids
+  expanding inside `Load` (which would silently depend on `os.UserHomeDir` for
+  every path, including already-expanded absolute paths).
+- **`default.toml` as documentation only**: The file is committed for
+  discoverability but is not embedded or read at runtime, keeping the binary
+  free of hidden file-load paths.
+- **`JIRA_API_TOKEN` override applied to missing-file path too**: The env
+  override is applied in `applyEnvOverrides`, which is called for both the
+  file-present and file-absent branches, so the override works even when no
+  config file exists.
 
 ## Known Limitations / Follow-up Work
 
-- No transaction support yet. Bulk operations (e.g., saving a plan and its
-  completions atomically) will require wrapping in a `sql.Tx`; a future issue
-  can expose a `WithTx` helper if needed.
-- `LoadCompletions`, `LoadReflections`, and `LoadNudgeWindows` return `nil`
-  slices (not empty slices) when there are no rows. Callers should treat both
-  as empty; this can be normalised to `[]T{}` in a later clean-up if callers
-  find `nil` inconvenient.
-- The database path is hardcoded in `main.go`; issue #3 (config file) will
-  make this configurable.
+- `FocusWindow.Start` and `End` are stored as raw strings ("HH:MM"). No
+  format validation is performed at load time; the nudge scheduler (issue #7)
+  should parse and validate these when it sets up timers.
+- `ExpandDataDir` only handles a leading `~` shorthand. Paths like `~other`
+  (another user's home) are passed through unchanged, which is the correct
+  conservative behaviour for a single-user tool.
+- Config hot-reload is not implemented. The config is read once at startup;
+  a restart is required to pick up changes.
