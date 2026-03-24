@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/EwanGreer/day-planner/internal/config"
+	"github.com/EwanGreer/day-planner/internal/integrations/jira"
 	"github.com/EwanGreer/day-planner/internal/integrations/taskwarrior"
 	"github.com/EwanGreer/day-planner/internal/nudge"
 	"github.com/EwanGreer/day-planner/internal/store/sqlite"
@@ -99,6 +100,12 @@ func main() {
 				os.Exit(1)
 			}
 		}
+	}
+
+	if cfg.Jira.Enabled {
+		jiraAdapter := jira.New(cfg.Jira)
+		// jiraAdapter will be wired into the planning service in a subsequent issue.
+		_ = jiraAdapter
 	}
 
 	_ = store // store will be passed to services in subsequent issues
