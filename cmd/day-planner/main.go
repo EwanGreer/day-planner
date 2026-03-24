@@ -67,15 +67,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	if tw.IsAvailable() {
-		tasks, err := tw.FetchTasks()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "taskwarrior error: %v\n", err)
-			os.Exit(1)
-		}
-		if err := presenter.ShowTaskList(tasks); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+	if cfg.Taskwarrior.Enabled {
+		if !tw.IsAvailable() {
+			if err := presenter.ShowMessage("Taskwarrior not found in PATH -- skipping"); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			tasks, err := tw.FetchTasks()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "taskwarrior error: %v\n", err)
+				os.Exit(1)
+			}
+			if err := presenter.ShowTaskList(tasks); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
 		}
 	}
 
