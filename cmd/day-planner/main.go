@@ -73,7 +73,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "taskwarrior error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := presenter.ShowTasks(tasks); err != nil {
+		if err := presenter.ShowTaskList(tasks); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
