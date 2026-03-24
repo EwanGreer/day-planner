@@ -1,0 +1,208 @@
+
+Day Planner CLI
+Product Requirements Document
+Version 0.1  —  March 2026  —  Draft
+Author
+Ewan Greer
+Status
+Draft
+Last Updated
+March 2026
+Version
+0.1
+
+
+
+1. Overview
+Day Planner CLI is a locally-run, terminal-based planning tool designed to help a solo developer take back control of their workday. It aggregates tasks from existing tools (Taskwarrior, Jira) and guides the user through a structured daily ritual: commit to priorities in the morning, check in during the day, and review performance at close of day.
+The tool is owned and operated by the individual. It is not tied to any company infrastructure. Integrations with employer-specific tools (e.g. Jira) are treated as optional, configurable plugins so the core tool remains portable across jobs.
+
+2. Problem Statement
+The target user (a software developer working in a team environment) has access to task management tools — Jira for project work, Taskwarrior for personal task tracking — but consistently fails to use them as a guide for the day. Instead, the day is shaped by reactive channels: Slack messages and emails pull attention in real time, and tasks with social urgency (e.g. PR review requests) displace planned work.
+
+The root causes are:
+Reactive channels (Slack, email) have immediate social pull; task tools are passive and easy to ignore.
+There is no enforced start-of-day ritual to establish intent before the first distraction arrives.
+Existing tools lack a feedback loop or scoring mechanism to make adherence feel rewarding.
+No previous tool has been sticky enough to build a lasting habit.
+
+3. Goals
+3.1 In Scope
+Provide a structured morning planning ritual that surfaces prioritised tasks and asks the user to commit to 2–3 goals for the day.
+Send periodic nudges throughout the day to keep the user anchored to their commitments.
+Allow lightweight check-ins to mark tasks complete or log progress.
+Produce an end-of-day score and summary based on completion against commitments.
+Implement a streak system to build a daily habit over time.
+Integrate with Taskwarrior as the primary, always-available task source.
+Support optional integration with Jira for work-specific tasks.
+Run entirely locally; no cloud account or subscription required.
+
+3.2 Out of Scope (v1)
+Native Slack or email integration (policy and portability concerns).
+Mobile or web interface (terminal-first; UI layer abstracted for future extension).
+Team or multi-user features.
+Calendar integration.
+AI-powered sentiment analysis (planned for a later milestone).
+
+4. User Persona
+Name
+Ewan
+Role
+Software Developer (solo contributor)
+Environment
+Terminal-comfortable; uses Taskwarrior, Jira, Slack, email daily
+Core pain
+Reactive to Slack/email; planned work gets displaced
+Motivation
+Wants to feel in control of the day and see measurable progress
+Key constraint
+Tool must be portable between employers; cannot rely on company infrastructure
+
+
+
+5. Feature Requirements
+5.1 Morning Planning (MVP)
+Triggered by running the tool at the start of the day. The session should take no more than 2–3 minutes.
+
+ID
+Requirement
+Priority
+M-01
+Pull pending tasks from Taskwarrior, sorted by urgency/priority
+Must Have
+M-02
+Optionally pull open Jira issues assigned to the user (configurable)
+Should Have
+M-03
+Present a ranked list and prompt the user to select 2–3 commitments for the day
+Must Have
+M-04
+Persist the day’s commitments to a local data store
+Must Have
+M-05
+Display current streak and yesterday’s score on launch
+Should Have
+
+
+5.2 Intraday Check-ins & Nudges
+The tool runs a background process that nudges the user at configurable intervals and accepts lightweight status updates via a CLI command.
+
+ID
+Requirement
+Priority
+I-01
+Background process sends a terminal notification at configurable intervals (default: every 90 minutes)
+Must Have
+I-02
+Nudge displays the user’s current commitments as a reminder
+Must Have
+I-03
+CLI command to mark a commitment as complete
+Must Have
+I-04
+CLI command to log a brief progress note against a commitment
+Should Have
+I-05
+Nudges are suppressed during user-defined focus/do-not-disturb windows
+Could Have
+
+
+5.3 End-of-Day Review & Scoring
+Triggered by a close-out CLI command. Produces a summary of the day and updates the streak.
+
+ID
+Requirement
+Priority
+E-01
+Calculate a simple completion score: tasks completed / tasks committed (as a percentage)
+Must Have
+E-02
+Display a summary: commitments made, completed, skipped
+Must Have
+E-03
+Update and display the current streak (consecutive days scoring above a threshold, e.g. ≥70%)
+Must Have
+E-04
+Prompt for an optional free-text daily reflection
+Should Have
+E-05
+Persist daily records locally for historical review
+Must Have
+E-06
+AI sentiment analysis of reflections over time to surface patterns (future milestone)
+Won’t Have (v1)
+
+
+5.4 Configuration & Integrations
+ID
+Requirement
+Priority
+C-01
+Local config file (e.g. TOML/YAML) for nudge intervals, streak threshold, and integration credentials
+Must Have
+C-02
+Taskwarrior integration via the tw CLI; no custom sync required
+Must Have
+C-03
+Jira integration via REST API (optional; disabled if unconfigured)
+Should Have
+C-04
+View layer abstracted behind an interface to allow future UI replacement
+Should Have
+C-05
+All data stored locally in a portable format (e.g. SQLite or flat JSON/TOML files)
+Must Have
+
+
+
+6. High-Level Architecture
+The tool is designed with a clean separation of concerns to support the portability goal and make future UI changes straightforward.
+
+Layer
+Responsibility
+Core / Domain
+Day planning logic, scoring, streaks, data persistence. No UI or integration dependencies.
+Integrations
+Taskwarrior adapter, Jira adapter. Pluggable; new integrations added without touching core.
+View Layer
+Terminal UI (TUI) for v1. Abstracted behind an interface so it can be swapped for a web UI or desktop app later.
+Background Service
+Daemon or cron job responsible for delivering intraday nudges.
+Data Store
+Local flat files or SQLite database. Stores daily plans, completion records, streaks, and reflections.
+
+
+
+7. Success Metrics
+Since this is a personal tool, success is measured by subjective value and habit formation rather than business KPIs.
+The user opens the tool at the start of the day on ≥5 consecutive working days within the first two weeks.
+The user reports feeling more in control of their priorities compared to before.
+Average daily completion score is ≥60% after the first month of consistent use.
+A streak of ≥10 working days is achieved within the first 6 weeks.
+
+
+8. Suggested Milestones
+Milestone
+Scope
+Goal
+M1 — Spike
+Morning planning with Taskwarrior only. CLI input/output. Persist commitments to a file.
+Validate the core loop works end-to-end
+M2 — Core Loop
+Add intraday nudges, check-in commands, and end-of-day scoring.
+Tool is usable for a full working day
+M3 — Habit Layer
+Streaks, historical records, Jira integration.
+Hook deepens; tool survives first few weeks
+M4 — AI Layer
+Sentiment analysis on daily reflections; pattern insights.
+Tool becomes smarter over time
+
+
+
+9. Open Questions
+What language/runtime will the tool be built in? (Not yet decided — problem-driven, stack TBD.)
+How should nudges be delivered on different OS environments? (terminal-notifier on macOS, notify-send on Linux, etc.)
+What is the minimum viable scoring threshold to count a day as a “good” day for streak purposes?
+Should the background nudge process be a persistent daemon or a simpler cron/launchd/systemd job?
+What AI model/API will be used for sentiment analysis in a later milestone, and how does this fit the “run locally” ethos?
