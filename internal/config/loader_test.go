@@ -199,6 +199,36 @@ email = "user@example.com"
 	}
 }
 
+// TestFocusWindowValidation_StartAfterEnd verifies that a focus window where
+// start >= end is rejected by validation.
+func TestFocusWindowValidation_StartAfterEnd(t *testing.T) {
+	path := writeTOML(t, `
+[nudges]
+focus_windows = [
+  { start = "14:00", end = "09:00", label = "bad window" },
+]
+`)
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for start >= end, got nil")
+	}
+}
+
+// TestFocusWindowValidation_InvalidFormat verifies that a focus window with a
+// non-HH:MM start time is rejected.
+func TestFocusWindowValidation_InvalidFormat(t *testing.T) {
+	path := writeTOML(t, `
+[nudges]
+focus_windows = [
+  { start = "9am", end = "10:00", label = "bad format" },
+]
+`)
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for invalid HH:MM format, got nil")
+	}
+}
+
 // TestMissingFile verifies that a non-existent path returns defaults without error.
 func TestMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.toml")
