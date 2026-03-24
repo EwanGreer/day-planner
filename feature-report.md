@@ -1,113 +1,113 @@
-# Feature Report: Taskwarrior Integration
+# Feature Report: Jira Integration
 
 **Date**: 2026-03-24
 **Language/Framework**: Go
-**Issue**: #4
-**Branch**: `feature/issue-4-taskwarrior`
+**Issue**: #12
+**Branch**: `feature/issue-12-jira`
 **Status**: Complete
 
 ## Summary
 
-Replaced the Taskwarrior adapter stub with a fully functional implementation.
-The adapter shells out to `task status:pending export`, parses the JSON response,
-maps Taskwarrior fields to `core.Task`, and returns results sorted by urgency
-descending. A `Commander` interface decouples the adapter from `os/exec` so tests
-run without a real `task` binary. `core.Task` was extended with four new fields
-(`Urgency`, `Project`, `Tags`, `Due`) required by the adapter. The main entry
-point gates Taskwarrior behind the config flag and emits a clear message when the
-binary is absent from PATH.
+Implemented a Jira REST API adapter that satisfies the existing
+`integrations.Integration` interface. The adapter fetches open issues assigned
+to the current user, maps them to `core.Task`, and integrates gracefully: it
+returns `nil, nil` when disabled or when the HTTP request fails with a non-2xx
+status. All required config fields (`Enabled`, `BaseURL`, `Email`, `APIToken`)
+are checked before any network call is made. A compile-time assertion confirms
+interface compliance. The adapter is wired into `main.go` behind the
+`cfg.Jira.Enabled` flag.
 
 ## Changes Made
 
-### internal/core
+### internal/integrations/jira
 
-- `internal/core/domain.go` — Added `Urgency float64`, `Project string`,
-  `Tags []string`, and `Due *time.Time` fields to `Task`. Existing fields
-  untouched.
-
-### internal/integrations/taskwarrior
-
-- `internal/integrations/taskwarrior/commander.go` — New file. Defines the
-  `Commander` interface (`Run(name string, args ...string) ([]byte, error)`) and
-  the `ExecCommander` concrete implementation backed by `os/exec`.
-
-- `internal/integrations/taskwarrior/adapter.go` — Full rewrite of the stub.
-  Defines private `twTask` for JSON unmarshalling. `New()` wires `ExecCommander`;
-  `NewWithCommander(cmd)` accepts a test double. `IsAvailable()` uses
-  `exec.LookPath`. `FetchTasks()` runs `task status:pending export`, handles the
-  binary-not-found case by returning `nil, nil`, unmarshals JSON, maps fields
-  (including priority string to int and due-date parsing in both RFC3339 and
-  Taskwarrior compact format), sorts by urgency descending, and always returns a
-  non-nil slice on success.
+- `internal/integrations/jira/adapter.go` — New package. Defines:
+  - `HTTPClient` interface for test injection
+  - `Adapter` struct with `cfg`, `client`, and `lastCall` fields
+  - `New(cfg)` constructor using a real `http.Client` with a 10-second timeout
+  - `NewWithClient(cfg, client)` constructor for testing
+  - `Name()` returning `"jira"`
+  - `IsAvailable()` checking all four required config fields
+  - `FetchTasks()` building JQL, calling the Jira search API, and mapping results
+  - `buildJQL(projectKeys)` constructing JQL with optional `project IN (...)` filter
+  - `mapIssue(issue)` mapping a Jira issue to `core.Task`
+  - `mapPriority(name)` mapping Jira priority names to int levels
+  - Private response types: `searchResponse`, `jiraIssue`, `jiraFields`,
+    `jiraPriority`, `jiraProject`
+  - Compile-time assertion: `var _ integrations.Integration = (*Adapter)(nil)`
 
 ### cmd/day-planner
 
-- `cmd/day-planner/main.go` — Taskwarrior block now checks
-  `cfg.Taskwarrior.Enabled` before calling `IsAvailable()`. When enabled but not
-  in PATH, prints "Taskwarrior not found in PATH -- skipping" via the presenter
-  instead of silently doing nothing.
+- `cmd/day-planner/main.go` — Added `jira` import and a block that constructs
+  `jira.New(cfg.Jira)` when `cfg.Jira.Enabled` is true. The adapter variable is
+  held ready to be passed to the planning service in a subsequent issue.
 
 ## Tests Written
 
-- `internal/integrations/taskwarrior/adapter_test.go` — 6 test cases using a
-  `fakeCommander` test double:
+- `internal/integrations/jira/adapter_test.go` — 9 unit tests + 1 skipped
+  integration test using a `fakeHTTPClient` and `capFakeClient` test doubles.
 
   | Test | What is verified |
   |------|-----------------|
-  | `TestFetchTasks_Success` | 3 tasks returned, sorted urgency desc, all fields mapped correctly |
-  | `TestFetchTasks_Empty` | Empty JSON array yields non-nil empty slice, no error |
-  | `TestFetchTasks_InvalidJSON` | Garbage output returns a non-nil error |
-  | `TestFetchTasks_NotInstalled` | "executable file not found" error yields nil, nil |
-  | `TestPriorityMapping` | H=3, M=2, L=1, ""=0 |
-  | `TestIsAvailable_False` | Calls `IsAvailable()` on a real adapter; asserts no panic |
+  | `TestFetchTasks_Success` | 3 issues returned, all fields mapped correctly (ID, Title, Status, Source, Priority, Project) |
+  | `TestFetchTasks_Disabled` | `cfg.Enabled=false` returns `nil, nil` without an HTTP call |
+  | `TestFetchTasks_EmptyProjectKeys` | JQL contains no `project IN` filter when `ProjectKeys` is nil |
+  | `TestFetchTasks_ProjectKeysInJQL` | JQL contains `project IN (ENG, OPS)` when keys are provided |
+  | `TestFetchTasks_HTTPError` | HTTP 500 response returns `nil, nil` (graceful fallback) |
+  | `TestFetchTasks_InvalidJSON` | Garbage response body returns a non-nil error |
+  | `TestPriorityMapping` | Highest/High=3, Medium=2, Low/Lowest=1, unknown/empty=0 |
+  | `TestIsAvailable_AllFieldsSet` | Returns `true` when all four fields populated |
+  | `TestIsAvailable_MissingToken` | Returns `false` when `APIToken` is empty |
+  | `TestIntegration_FetchTasks` | Skipped unless `JIRA_BASE_URL` env var is set |
 
 ## Commits
 
 | Hash | Message |
 |------|---------|
-| `743975f` | extend core.Task with Urgency, Project, Tags, Due fields |
-| `c7b6cb4` | add Commander interface and ExecCommander for testable shell delegation |
-| `457ad75` | implement real Taskwarrior adapter with JSON parsing and urgency sort |
-| `0396fa0` | add unit tests for Taskwarrior adapter |
-| `209a584` | wire Taskwarrior adapter into main with config-gating and PATH-missing message |
+| `f7018fb` | add Jira integration adapter |
+| `6dba10c` | add unit tests for Jira adapter |
+| `bbe3774` | wire Jira adapter into main |
 
 ## Acceptance Criteria
 
 - [x] `go build ./...` passes
-- [x] `go test ./...` passes — all 6 adapter tests green
-- [x] `IsAvailable` uses `exec.LookPath` (not hardcoded false)
-- [x] `FetchTasks` returns tasks sorted by urgency descending
-- [x] Binary-not-found returns `nil, nil` (not an error)
-- [x] Commander interface enables testing without a real `task` binary
+- [x] `go test ./...` passes — all 9 unit tests green
+- [x] `IsAvailable` returns false when any required config field is missing
+- [x] Non-2xx HTTP response returns `nil, nil` (graceful fallback)
+- [x] `Adapter` implements `integrations.Integration` (compile-time assertion)
+- [x] Integration test skipped unless `JIRA_BASE_URL` env var is set
+- [x] No Jira imports leak into `internal/core`
 
 ## Design Decisions
 
-- **`ExitError` passthrough with non-empty stdout**: `task export` can exit
-  non-zero (e.g., Taskwarrior versions that exit 1 when there are no tasks) but
-  still write valid JSON to stdout. The adapter checks for an `*exec.ExitError`
-  and, when stdout is non-empty, proceeds to JSON parse rather than returning the
-  error. This avoids false failures on strict Taskwarrior versions.
+- **Graceful fallback on HTTP errors**: A non-2xx status logs a warning and
+  returns `nil, nil` rather than propagating an error. This matches the design
+  goal that optional integrations must never abort the morning planning session.
 
-- **Two due-date formats**: Taskwarrior exports dates as `"20260324T120000Z"`
-  (compact UTC), but the JSON spec allows RFC3339 too. Trying RFC3339 first keeps
-  the parser forward-compatible with tools that normalise the field.
+- **Rate-limit guard via `lastCall`**: The adapter tracks the time of its last
+  call and sleeps one second if called again within the same session. In practice
+  the adapter is called once per session, but the guard prevents accidental
+  thundering-herd behaviour if call patterns change.
 
-- **`nil, nil` for missing binary**: Treating a missing binary as an empty
-  integration (rather than an error) lets the planner start cleanly on machines
-  that don't have Taskwarrior. The "not found in PATH" presenter message provides
-  user-visible feedback without a fatal exit.
+- **`capFakeClient` for request inspection**: Two tests need to assert on the
+  outgoing request URL (specifically the `jql` query parameter). A thin
+  `capFakeClient` captures the `*http.Request` pointer while still returning a
+  canned response, avoiding the overhead of `httptest.NewServer`.
 
-- **Non-nil empty slice on success**: `make([]core.Task, 0, len(raw))` ensures
-  callers can safely range over the result without a nil check when Taskwarrior
-  is present but has no pending tasks.
+- **JQL insertion point**: The project filter is inserted before the `ORDER BY`
+  clause by locating the substring `" ORDER BY"` in the base JQL string. This is
+  deterministic and avoids fragile string concatenation.
+
+- **`TaskMain` is minimal**: The `TestMain` function in the test file exists to
+  document the integration-test skip convention in one place. Unit tests run
+  unconditionally.
 
 ## Known Limitations / Follow-up Work
 
-- The adapter only queries `status:pending`. Taskwarrior supports richer filters
-  (project, tag, due-before); exposing filter configuration can be done in a
-  follow-up once the config schema is stable.
-- Due-date parsing silently returns `nil` for unrecognised formats. A log warning
-  would help diagnose future format changes.
-- `TestIsAvailable_False` does not assert the return value because `task` may be
-  installed in any given environment. A more deterministic approach would be to
-  add a `lookPath` function field to `Adapter` and inject a fake in tests.
+- The `lastCall` rate-limit guard resets when the process exits. If the adapter
+  is ever called from a long-running daemon, a persistent rate-limit store would
+  be needed.
+- `FetchTasks` always requests `maxResults=50`. Pagination support (using
+  `startAt` + `total`) is deferred until a real usage pattern shows it is needed.
+- The `status NOT IN (Done, Closed, "Won't Do")` filter is hardcoded. Exposing
+  this as a config option is left for a follow-up issue.
