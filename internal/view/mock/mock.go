@@ -16,6 +16,7 @@ type Presenter struct {
 	PlanConfirmed       *core.DayPlan
 	NudgesSent          [][]core.Task
 	EODSummariesShown   []*core.DayPlan
+	EODScoresShown      []int
 	MessagesShown       []string
 	ErrorsShown         []error
 	Closed              bool
@@ -50,6 +51,7 @@ func (m *Presenter) ShowNudge(commitments []core.Task) error {
 
 func (m *Presenter) ShowEODSummary(plan *core.DayPlan, score int) error {
 	m.EODSummariesShown = append(m.EODSummariesShown, plan)
+	m.EODScoresShown = append(m.EODScoresShown, score)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/EwanGreer/day-planner/internal/core"
 	"github.com/EwanGreer/day-planner/internal/view"
@@ -88,9 +89,9 @@ func (t *TUI) ShowMessage(msg string) error {
 	return nil
 }
 
-// ShowError prints an error to stdout.
+// ShowError prints an error to stderr.
 func (t *TUI) ShowError(err error) {
-	fmt.Printf("Error: %v\n", err)
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 }
 
 // Close is a no-op for the stdout stub.
