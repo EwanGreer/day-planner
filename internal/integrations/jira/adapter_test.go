@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -206,6 +207,20 @@ func TestFetchTasks_HTTPError(t *testing.T) {
 	}
 	if tasks != nil {
 		t.Errorf("expected nil tasks on HTTP 500, got %v", tasks)
+	}
+}
+
+func TestFetchTasks_NetworkError(t *testing.T) {
+	a := NewWithClient(baseConfig(), &fakeHTTPClient{
+		err: fmt.Errorf("dial tcp: connection refused"),
+	})
+
+	tasks, err := a.FetchTasks()
+	if err != nil {
+		t.Fatalf("expected nil error on network failure (graceful fallback), got: %v", err)
+	}
+	if tasks != nil {
+		t.Errorf("expected nil tasks on network failure, got %v", tasks)
 	}
 }
 

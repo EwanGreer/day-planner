@@ -86,7 +86,8 @@ func (a *Adapter) FetchTasks() ([]core.Task, error) {
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("jira: http request: %w", err)
+		log.Printf("jira: http request failed — skipping: %v", err)
+		return nil, nil
 	}
 	defer resp.Body.Close()
 
