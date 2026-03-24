@@ -1,108 +1,113 @@
-# Feature Report: Local Config File
+# Feature Report: Taskwarrior Integration
 
 **Date**: 2026-03-24
 **Language/Framework**: Go
-**Issue**: #3
-**Branch**: `feature/issue-3-config-file`
+**Issue**: #4
+**Branch**: `feature/issue-4-taskwarrior`
 **Status**: Complete
 
 ## Summary
 
-Implemented a TOML-based configuration system for the day planner. A new
-`core.Config` domain type carries all runtime configuration with no file-format
-dependency. A new `internal/config` package provides `Load`, `DefaultConfig`,
-and `ExpandDataDir`. The loader merges file values over defaults, applies the
-`JIRA_API_TOKEN` env-var override, and validates constraints before returning.
-Missing config files return defaults without error. `main.go` now loads config
-before opening the store and derives the data directory from `cfg.General.DataDir`.
+Replaced the Taskwarrior adapter stub with a fully functional implementation.
+The adapter shells out to `task status:pending export`, parses the JSON response,
+maps Taskwarrior fields to `core.Task`, and returns results sorted by urgency
+descending. A `Commander` interface decouples the adapter from `os/exec` so tests
+run without a real `task` binary. `core.Task` was extended with four new fields
+(`Urgency`, `Project`, `Tags`, `Due`) required by the adapter. The main entry
+point gates Taskwarrior behind the config flag and emits a clear message when the
+binary is absent from PATH.
 
 ## Changes Made
 
 ### internal/core
 
-- `internal/core/config.go` — New file. Defines `Config`, `GeneralConfig`,
-  `NudgesConfig`, `FocusWindow`, `TaskwarriorConfig`, and `JiraConfig`. Zero
-  imports — no file-format or IO dependencies.
+- `internal/core/domain.go` — Added `Urgency float64`, `Project string`,
+  `Tags []string`, and `Due *time.Time` fields to `Task`. Existing fields
+  untouched.
 
-### internal/config (new package)
+### internal/integrations/taskwarrior
 
-- `internal/config/loader.go` — `Load(path string) (*core.Config, error)`,
-  `DefaultConfig() *core.Config`, `ExpandDataDir(path string) (string, error)`.
-  Uses `github.com/BurntSushi/toml` for parsing. Internal `rawConfig` mirrors
-  the TOML shape with pointer fields so absent keys fall back to defaults rather
-  than overwriting them with zero values. `mergeRaw` layers parsed values over
-  defaults; `applyEnvOverrides` applies `JIRA_API_TOKEN`; `validate` enforces
-  range and completeness constraints.
-- `internal/config/default.toml` — Commented TOML template documenting all
-  options with their defaults. Not loaded at runtime; serves as reference
-  documentation.
+- `internal/integrations/taskwarrior/commander.go` — New file. Defines the
+  `Commander` interface (`Run(name string, args ...string) ([]byte, error)`) and
+  the `ExecCommander` concrete implementation backed by `os/exec`.
+
+- `internal/integrations/taskwarrior/adapter.go` — Full rewrite of the stub.
+  Defines private `twTask` for JSON unmarshalling. `New()` wires `ExecCommander`;
+  `NewWithCommander(cmd)` accepts a test double. `IsAvailable()` uses
+  `exec.LookPath`. `FetchTasks()` runs `task status:pending export`, handles the
+  binary-not-found case by returning `nil, nil`, unmarshals JSON, maps fields
+  (including priority string to int and due-date parsing in both RFC3339 and
+  Taskwarrior compact format), sorts by urgency descending, and always returns a
+  non-nil slice on success.
 
 ### cmd/day-planner
 
-- `cmd/day-planner/main.go` — Calls `config.Load("")` before opening the store,
-  expands `DataDir` with `config.ExpandDataDir`, uses the expanded path as the
-  base for `dbPath`, and prints `"Data dir: <path>"` via the presenter.
+- `cmd/day-planner/main.go` — Taskwarrior block now checks
+  `cfg.Taskwarrior.Enabled` before calling `IsAvailable()`. When enabled but not
+  in PATH, prints "Taskwarrior not found in PATH -- skipping" via the presenter
+  instead of silently doing nothing.
 
 ## Tests Written
 
-- `internal/config/loader_test.go` — 8 test cases, each using an isolated
-  `t.TempDir()`:
+- `internal/integrations/taskwarrior/adapter_test.go` — 6 test cases using a
+  `fakeCommander` test double:
 
   | Test | What is verified |
   |------|-----------------|
-  | `TestDefaultConfig` | Load with non-existent path returns all defaults |
-  | `TestPartialConfig` | Only `[general]` present; other sections use defaults |
-  | `TestFullConfig` | All fields parsed correctly including focus windows and project keys |
-  | `TestEnvOverride` | `JIRA_API_TOKEN` env var overrides file value |
-  | `TestInvalidStreakThreshold` | `streak_threshold = 150` returns a validation error |
-  | `TestInvalidIntervalMinutes` | `interval_minutes = 0` returns a validation error |
-  | `TestJiraEnabledWithoutURL` | `enabled = true` without `base_url` returns a validation error |
-  | `TestMissingFile` | Non-existent path returns defaults, not an error |
+  | `TestFetchTasks_Success` | 3 tasks returned, sorted urgency desc, all fields mapped correctly |
+  | `TestFetchTasks_Empty` | Empty JSON array yields non-nil empty slice, no error |
+  | `TestFetchTasks_InvalidJSON` | Garbage output returns a non-nil error |
+  | `TestFetchTasks_NotInstalled` | "executable file not found" error yields nil, nil |
+  | `TestPriorityMapping` | H=3, M=2, L=1, ""=0 |
+  | `TestIsAvailable_False` | Calls `IsAvailable()` on a real adapter; asserts no panic |
 
 ## Commits
 
 | Hash | Message |
 |------|---------|
-| `8cf1d86` | add Config domain types to internal/core |
-| `dff5d58` | implement config loader with defaults, TOML parsing, env override, validation |
-| `74113d1` | add unit tests for config loader |
-| `b30ddc4` | wire config into main: load config, use DataDir for db path, show data dir |
+| `743975f` | extend core.Task with Urgency, Project, Tags, Due fields |
+| `c7b6cb4` | add Commander interface and ExecCommander for testable shell delegation |
+| `457ad75` | implement real Taskwarrior adapter with JSON parsing and urgency sort |
+| `0396fa0` | add unit tests for Taskwarrior adapter |
+| `209a584` | wire Taskwarrior adapter into main with config-gating and PATH-missing message |
 
 ## Acceptance Criteria
 
 - [x] `go build ./...` passes
-- [x] `go test ./...` passes — all 8 config tests green
-- [x] `internal/core/config.go` has zero imports from `internal/config`
-- [x] `internal/config` imports `internal/core` but nothing from `internal/view` or `internal/store`
-- [x] `JIRA_API_TOKEN` env var overrides the file value
-- [x] Missing config file returns defaults without error
-- [x] Validation errors are clear and actionable
+- [x] `go test ./...` passes — all 6 adapter tests green
+- [x] `IsAvailable` uses `exec.LookPath` (not hardcoded false)
+- [x] `FetchTasks` returns tasks sorted by urgency descending
+- [x] Binary-not-found returns `nil, nil` (not an error)
+- [x] Commander interface enables testing without a real `task` binary
 
 ## Design Decisions
 
-- **Pointer fields in `rawConfig`**: Using `*string` and `*int` for all raw
-  fields lets `mergeRaw` distinguish "key absent from file" (nil) from "key
-  present with zero value" (non-nil). This keeps default logic in one place
-  (`DefaultConfig`) rather than scattering sentinel checks.
-- **`ExpandDataDir` exported separately**: `main.go` needs to expand the path
-  returned by `DefaultConfig`; keeping expansion as a standalone function avoids
-  expanding inside `Load` (which would silently depend on `os.UserHomeDir` for
-  every path, including already-expanded absolute paths).
-- **`default.toml` as documentation only**: The file is committed for
-  discoverability but is not embedded or read at runtime, keeping the binary
-  free of hidden file-load paths.
-- **`JIRA_API_TOKEN` override applied to missing-file path too**: The env
-  override is applied in `applyEnvOverrides`, which is called for both the
-  file-present and file-absent branches, so the override works even when no
-  config file exists.
+- **`ExitError` passthrough with non-empty stdout**: `task export` can exit
+  non-zero (e.g., Taskwarrior versions that exit 1 when there are no tasks) but
+  still write valid JSON to stdout. The adapter checks for an `*exec.ExitError`
+  and, when stdout is non-empty, proceeds to JSON parse rather than returning the
+  error. This avoids false failures on strict Taskwarrior versions.
+
+- **Two due-date formats**: Taskwarrior exports dates as `"20260324T120000Z"`
+  (compact UTC), but the JSON spec allows RFC3339 too. Trying RFC3339 first keeps
+  the parser forward-compatible with tools that normalise the field.
+
+- **`nil, nil` for missing binary**: Treating a missing binary as an empty
+  integration (rather than an error) lets the planner start cleanly on machines
+  that don't have Taskwarrior. The "not found in PATH" presenter message provides
+  user-visible feedback without a fatal exit.
+
+- **Non-nil empty slice on success**: `make([]core.Task, 0, len(raw))` ensures
+  callers can safely range over the result without a nil check when Taskwarrior
+  is present but has no pending tasks.
 
 ## Known Limitations / Follow-up Work
 
-- `FocusWindow.Start` and `End` are stored as raw strings ("HH:MM"). No
-  format validation is performed at load time; the nudge scheduler (issue #7)
-  should parse and validate these when it sets up timers.
-- `ExpandDataDir` only handles a leading `~` shorthand. Paths like `~other`
-  (another user's home) are passed through unchanged, which is the correct
-  conservative behaviour for a single-user tool.
-- Config hot-reload is not implemented. The config is read once at startup;
-  a restart is required to pick up changes.
+- The adapter only queries `status:pending`. Taskwarrior supports richer filters
+  (project, tag, due-before); exposing filter configuration can be done in a
+  follow-up once the config schema is stable.
+- Due-date parsing silently returns `nil` for unrecognised formats. A log warning
+  would help diagnose future format changes.
+- `TestIsAvailable_False` does not assert the return value because `task` may be
+  installed in any given environment. A more deterministic approach would be to
+  add a `lookPath` function field to `Adapter` and inject a fake in tests.

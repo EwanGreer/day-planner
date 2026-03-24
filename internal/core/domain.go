@@ -27,6 +27,14 @@ type Task struct {
 	Priority int
 	Status   TaskStatus
 	Source   TaskSource
+	// Urgency is the computed urgency score from Taskwarrior (higher is more urgent).
+	Urgency float64
+	// Project is the Taskwarrior project the task belongs to.
+	Project string
+	// Tags are the labels attached to the task.
+	Tags []string
+	// Due is the optional due date for the task.
+	Due *time.Time
 }
 
 // DayPlan represents the full plan for a single day.
