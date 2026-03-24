@@ -94,9 +94,12 @@ func Load(path string) (*core.Config, error) {
 
 	cfg := DefaultConfig()
 
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		applyEnvOverrides(cfg)
-		return cfg, nil
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			applyEnvOverrides(cfg)
+			return cfg, nil
+		}
+		return nil, fmt.Errorf("stat config file %s: %w", path, err)
 	}
 
 	var raw rawConfig
