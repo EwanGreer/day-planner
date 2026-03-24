@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/EwanGreer/day-planner/internal/core"
@@ -191,5 +192,27 @@ func validate(cfg *core.Config) error {
 			return fmt.Errorf("config: jira.email is required when jira.enabled is true")
 		}
 	}
+	for i, w := range cfg.Nudges.FocusWindows {
+		start, err := parseFocusTime(w.Start)
+		if err != nil {
+			return fmt.Errorf("config: focus_windows[%d]: invalid start %q: %w", i, w.Start, err)
+		}
+		end, err := parseFocusTime(w.End)
+		if err != nil {
+			return fmt.Errorf("config: focus_windows[%d]: invalid end %q: %w", i, w.End, err)
+		}
+		if !start.Before(end) {
+			return fmt.Errorf("config: focus_windows[%d]: start must be before end", i)
+		}
+	}
 	return nil
+}
+
+// parseFocusTime parses an "HH:MM" string into a time.Time (date portion is ignored).
+func parseFocusTime(s string) (time.Time, error) {
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("expected HH:MM 24-hour format")
+	}
+	return t, nil
 }
