@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/EwanGreer/day-planner/internal/core"
 	"github.com/EwanGreer/day-planner/internal/view"
@@ -29,19 +32,58 @@ func (t *TUI) ShowTaskList(tasks []core.Task) error {
 	return nil
 }
 
-// PromptCommitments prints tasks and returns the first min(3, len(tasks)) as a stub.
-// A real interactive prompt will be added in issue #5.
+// PromptCommitments presents the task list and reads the user's selection from
+// stdin. The user enters a comma-separated list of 1-based indices. Exactly
+// 2 or 3 tasks must be selected; invalid input is rejected with a retry.
 func (t *TUI) PromptCommitments(tasks []core.Task) ([]core.Task, error) {
-	fmt.Println("Select your commitments for today:")
+	fmt.Println("\nSelect 2-3 tasks to commit to today (e.g. 1,3):")
 	for i, task := range tasks {
-		fmt.Printf("  %d. [%s] %s (priority: %d)\n",
-			i+1, task.Status, task.Title, task.Priority)
+		fmt.Printf("  [%d] %-50s urgency: %.1f  (%s)\n",
+			i+1, task.Title, task.Urgency, task.Source)
 	}
-	limit := 3
-	if len(tasks) < limit {
-		limit = len(tasks)
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("\nYour selection: ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("read input: %w", err)
+		}
+		selected, err := parseSelection(strings.TrimSpace(line), len(tasks))
+		if err != nil {
+			fmt.Printf("Invalid selection: %v. Please try again.\n", err)
+			continue
+		}
+		if len(selected) < 2 || len(selected) > 3 {
+			fmt.Println("Please select between 2 and 3 tasks.")
+			continue
+		}
+		result := make([]core.Task, len(selected))
+		for i, idx := range selected {
+			result[i] = tasks[idx-1]
+		}
+		return result, nil
 	}
-	return tasks[:limit], nil
+}
+
+// parseSelection parses a comma-separated list of 1-based indices, returning
+// an error if any index is out of range or duplicated.
+func parseSelection(s string, max int) ([]int, error) {
+	parts := strings.Split(s, ",")
+	seen := map[int]bool{}
+	var indices []int
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 1 || n > max {
+			return nil, fmt.Errorf("invalid index %q (valid: 1-%d)", p, max)
+		}
+		if seen[n] {
+			return nil, fmt.Errorf("duplicate index %d", n)
+		}
+		seen[n] = true
+		indices = append(indices, n)
+	}
+	return indices, nil
 }
 
 // ShowPlanConfirmation prints the confirmed day plan and streak info.
