@@ -1,6 +1,11 @@
 package taskwarrior
 
-import "github.com/EwanGreer/day-planner/internal/core"
+import (
+	"github.com/EwanGreer/day-planner/internal/core"
+	"github.com/EwanGreer/day-planner/internal/integrations"
+)
+
+var _ integrations.Integration = (*Adapter)(nil)
 
 // Adapter implements integrations.Integration for Taskwarrior.
 type Adapter struct{}

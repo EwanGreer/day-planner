@@ -4,7 +4,10 @@ import (
 	"fmt"
 
 	"github.com/EwanGreer/day-planner/internal/core"
+	"github.com/EwanGreer/day-planner/internal/view"
 )
+
+var _ view.Presenter = (*TUI)(nil)
 
 // TUI implements view.Presenter by printing to stdout.
 // This is a stub; a full terminal UI will be added in a later issue.
@@ -17,6 +20,9 @@ func New() *TUI {
 
 // ShowDayPlan prints a summary of the day plan to stdout.
 func (t *TUI) ShowDayPlan(plan *core.DayPlan) error {
+	if plan == nil {
+		return fmt.Errorf("ShowDayPlan: nil plan")
+	}
 	fmt.Printf("Day Plan for %s — %d task(s), score: %d\n",
 		plan.Date.Format("2006-01-02"), len(plan.Tasks), plan.Score)
 	return nil
