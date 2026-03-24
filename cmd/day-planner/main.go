@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/EwanGreer/day-planner/internal/config"
 	"github.com/EwanGreer/day-planner/internal/integrations/taskwarrior"
+	"github.com/EwanGreer/day-planner/internal/nudge"
 	"github.com/EwanGreer/day-planner/internal/store/sqlite"
 	"github.com/EwanGreer/day-planner/internal/view/tui"
 )
@@ -43,12 +45,25 @@ func main() {
 		}
 	}()
 
+	wc, err := nudge.NewWindowChecker(cfg.Nudges.FocusWindows)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "focus windows: %v\n", err)
+		os.Exit(1)
+	}
+
 	presenter := tui.New()
 	defer func() {
 		if err := presenter.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "presenter close error: %v\n", err)
 		}
 	}()
+
+	if wc.IsBlocked(time.Now()) {
+		if err := presenter.ShowMessage(wc.StatusMessage(time.Now())); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	tw := taskwarrior.New()
 
