@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/EwanGreer/day-planner/internal/config"
+	"github.com/EwanGreer/day-planner/internal/core"
 	"github.com/EwanGreer/day-planner/internal/integrations/jira"
 	"github.com/EwanGreer/day-planner/internal/integrations/taskwarrior"
 	"github.com/EwanGreer/day-planner/internal/nudge"
@@ -59,54 +60,51 @@ func main() {
 		}
 	}()
 
-	if wc.IsBlocked(time.Now()) {
-		if err := presenter.ShowMessage(wc.StatusMessage(time.Now())); err != nil {
+	if len(os.Args) < 2 {
+		if err := presenter.ShowMessage("Usage: day-planner <start|status>"); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
 		}
-	}
-
-	tw := taskwarrior.New()
-
-	if err := presenter.ShowMessage(fmt.Sprintf("Data dir: %s", dataDir)); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := presenter.ShowMessage(fmt.Sprintf("Store opened at %s", dbPath)); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	switch os.Args[1] {
+	case "start":
+		runStart(store, presenter, cfg)
+	case "status":
+		runStatus(wc, presenter)
+	default:
+		if err := presenter.ShowMessage(fmt.Sprintf("Unknown command: %s", os.Args[1])); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		}
 		os.Exit(1)
 	}
+}
 
-	if err := presenter.ShowMessage("Day Planner starting..."); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+// runStart wires together the task providers and planning service, then
+// executes the morning planning session for today.
+func runStart(store core.Store, presenter core.PlanPresenter, cfg *core.Config) {
+	var providers []core.TaskProvider
 
 	if cfg.Taskwarrior.Enabled {
-		if !tw.IsAvailable() {
-			if err := presenter.ShowMessage("Taskwarrior not found in PATH -- skipping"); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-		} else {
-			tasks, err := tw.FetchTasks()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "taskwarrior error: %v\n", err)
-				os.Exit(1)
-			}
-			if err := presenter.ShowTaskList(tasks); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-		}
+		providers = append(providers, taskwarrior.New())
 	}
 
 	if cfg.Jira.Enabled {
-		jiraAdapter := jira.New(cfg.Jira)
-		// jiraAdapter will be wired into the planning service in a subsequent issue.
-		_ = jiraAdapter
+		providers = append(providers, jira.New(cfg.Jira))
 	}
 
-	_ = store // store will be passed to services in subsequent issues
+	svc := core.NewPlanningService(store, providers, presenter)
+	if _, err := svc.StartMorning(time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "start morning: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runStatus prints the current focus-window status message.
+func runStatus(wc *nudge.WindowChecker, presenter core.PlanPresenter) {
+	msg := wc.StatusMessage(time.Now())
+	if err := presenter.ShowMessage(msg); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }
