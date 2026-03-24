@@ -1,6 +1,7 @@
 package nudge_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -153,19 +154,8 @@ func TestStatusMessage_InWindow(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	msg := wc.StatusMessage(makeTime(10, 0))
-	if msg == "" {
-		t.Fatal("StatusMessage: got empty string")
-	}
-	want := "deep work"
-	found := false
-	for i := 0; i+len(want) <= len(msg); i++ {
-		if msg[i:i+len(want)] == want {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("StatusMessage: %q does not contain label %q", msg, want)
+	if !strings.Contains(msg, "deep work") {
+		t.Errorf("StatusMessage: %q does not contain label %q", msg, "deep work")
 	}
 }
 
