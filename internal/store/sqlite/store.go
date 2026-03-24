@@ -213,16 +213,16 @@ func (s *SQLiteStore) LoadStreak() (*core.Streak, error) {
 	var (
 		current        int
 		longest        int
-		lastActiveSstr string
+		lastActiveStr string
 	)
 
-	if err := row.Scan(&current, &longest, &lastActiveSstr); err == sql.ErrNoRows {
+	if err := row.Scan(&current, &longest, &lastActiveStr); err == sql.ErrNoRows {
 		return &core.Streak{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("scan streak: %w", err)
 	}
 
-	lastActive, err := time.Parse(dateFmt, lastActiveSstr)
+	lastActive, err := time.Parse(dateFmt, lastActiveStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse last_active_date: %w", err)
 	}
