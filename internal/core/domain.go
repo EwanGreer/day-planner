@@ -31,8 +31,46 @@ type Task struct {
 
 // DayPlan represents the full plan for a single day.
 type DayPlan struct {
-	Date  time.Time
-	Tasks []Task
-	Goals []string
-	Score int
+	Date      time.Time
+	Tasks     []Task
+	Goals     []string
+	Score     int
+	CreatedAt time.Time
+}
+
+// CompletionStatus represents the outcome of a task on a given day.
+type CompletionStatus string
+
+const (
+	CompletionStatusComplete CompletionStatus = "complete"
+	CompletionStatusSkipped  CompletionStatus = "skipped"
+)
+
+// CompletionRecord tracks the outcome of a task on a given day.
+type CompletionRecord struct {
+	Date        time.Time
+	TaskID      string
+	Status      CompletionStatus
+	CompletedAt time.Time
+}
+
+// Streak tracks the user's consecutive active days.
+type Streak struct {
+	Current        int
+	Longest        int
+	LastActiveDate time.Time
+}
+
+// Reflection is a free-text end-of-day note.
+type Reflection struct {
+	Date      time.Time
+	Text      string
+	CreatedAt time.Time
+}
+
+// NudgeWindow defines a focus or DND time window.
+type NudgeWindow struct {
+	StartTime time.Time
+	EndTime   time.Time
+	Label     string // "focus" or "dnd"
 }
