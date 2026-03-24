@@ -1,0 +1,19 @@
+[general]
+data_dir = "~/.day-planner"
+streak_threshold = 70  # minimum % score for a day to count toward streak
+
+[nudges]
+interval_minutes = 90
+# focus_windows = [
+#   { start = "09:00", end = "10:30", label = "deep work" },
+# ]
+
+[taskwarrior]
+enabled = true
+
+[jira]
+enabled = false
+base_url = ""
+email = ""
+api_token = ""  # or set JIRA_API_TOKEN env var
+project_keys = []
